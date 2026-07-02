@@ -1,5 +1,6 @@
 from pathlib import Path
 import pandas as pd
+from utils import save_to_history
 
 print("=" * 60)
 print("TRADEFINDER V2 - LOAD DATA")
@@ -49,6 +50,11 @@ print(daily.columns.tolist())
 
 print("\nOI Columns")
 print(oi.columns.tolist())
+
+print("\nMW Columns")
+print(mw.columns.tolist())
+
+
 
 print("\nMW Columns")
 print(mw.columns.tolist())
@@ -185,6 +191,9 @@ master = master.merge(
 # ==========================================================
 
 output_file = OUTPUT / "MASTER.xlsx"
+# ==========================================================
+# AUTO HISTORY
+# ==========================================================
 
 master.to_excel(output_file, index=False)
 
@@ -193,3 +202,18 @@ print("MASTER CREATED SUCCESSFULLY")
 print(master.shape)
 print(output_file)
 print("=" * 60)
+trading_date = daily_file.name[2:10]
+
+trading_date = (
+    trading_date[4:8] + "-" +
+    trading_date[2:4] + "-" +
+    trading_date[0:2]
+)
+
+with open(OUTPUT / "trading_date.txt", "w") as f:
+    f.write(trading_date)
+
+save_to_history(
+    output_file,
+    "MASTER.xlsx"
+)

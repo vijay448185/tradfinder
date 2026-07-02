@@ -216,3 +216,21 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# ===============================
+# TradeFinder Generated Files
+# ===============================
+
+History/
+Output/
+DATA/
+Database/
+Logs/
+
+Input/Daily/*
+Input/OI/*
+Input/MW/*
+
+*.xlsx
+*.csv
+
+!README.md

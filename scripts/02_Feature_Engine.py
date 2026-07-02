@@ -1,5 +1,6 @@
 from pathlib import Path
 import pandas as pd
+from utils import save_to_history
 
 print("=" * 60)
 print("TRADEFINDER V2 - FEATURE ENGINE")
@@ -72,10 +73,16 @@ df["Futures Premium %"] = (
 ) * 100
 
 # 4. Volume Ratio
-median_volume = df["VOLUME (shares)"].median()
+
+if "VOLUME (shares)" in df.columns:
+    volume_col = "VOLUME (shares)"
+else:
+    volume_col = "TRADED_QUA"
+
+median_volume = df[volume_col].median()
 
 df["Volume Ratio"] = (
-    df["VOLUME (shares)"] / median_volume
+    df[volume_col] / median_volume
 )
 
 print("Features Created Successfully")
@@ -155,20 +162,7 @@ features.to_excel(OUTPUT_FILE, index=False)
 
 print("\nFEATURES CREATED")
 print(features.head(20))
-
-print("\nSaved :", OUTPUT_FILE)
-# ==========================================================
-# REMOVE INDEX SYMBOLS
-# ==========================================================
-
-df = df[
-    ~df["SYMBOL"].isin([
-        "NIFTY",
-        "BANKNIFTY",
-        "FINNIFTY",
-        "MIDCPNIFTY",
-        "NIFTYNXT50"
-    ])
-]
-
-print(f"\nStocks after removing indices : {len(df)}")
+save_to_history(
+    OUTPUT_FILE,
+    "FEATURES.xlsx"
+)
