@@ -1,6 +1,7 @@
 from pathlib import Path
+import sys
 import pandas as pd
-from utils import save_to_history
+from utils import save_to_history, normalize_columns
 print("=" * 60)
 print("TRADEFINDER V3 - BACKTEST")
 print("=" * 60)
@@ -23,30 +24,32 @@ if len(folders) < 2:
     exit()
 
 # =====================================================
-# SELECT BACKTEST PAIR
+# DATE BASED BACKTEST
 # =====================================================
 
-import sys
+if len(sys.argv) >= 3:
 
-# =====================================================
-# SELECT BACKTEST PAIR
-# =====================================================
+    scanner_date = sys.argv[1]
+    next_date = sys.argv[2]
 
-if len(sys.argv) > 1:
-    PAIR_INDEX = int(sys.argv[1])
+    scanner_folder = HISTORY / scanner_date
+    next_day_folder = HISTORY / next_date
+
 else:
-    PAIR_INDEX = 0
 
-if PAIR_INDEX >= len(folders) - 1:
-    print("Invalid Pair Index")
-    exit()
+    scanner_folder = folders[0]
+    next_day_folder = folders[1]
 
-scanner_folder = folders[PAIR_INDEX]
-next_day_folder = folders[PAIR_INDEX + 1]
+if not scanner_folder.exists():
+    print(f"Scanner Folder Not Found : {scanner_folder.name}")
+    sys.exit(1)
+
+if not next_day_folder.exists():
+    print(f"Next Day Folder Not Found : {next_day_folder.name}")
+    sys.exit(1)
 
 print(f"\nTotal History Folders : {len(folders)}")
 
-print(f"\nBacktest Pair : {PAIR_INDEX + 1}")
 
 print("\nScanner Folder :")
 print(scanner_folder.name)
@@ -70,6 +73,27 @@ print(master_file)
 scanner = pd.read_excel(scanner_file)
 bearish = pd.read_excel(bearish_file)
 master = pd.read_excel(master_file)
+master = normalize_columns(master)
+numeric_cols = [
+    "% CHANGE",
+    "OPEN",
+    "HIGH",
+    "LOW",
+    "LTP"
+]
+
+for col in numeric_cols:
+    if col in master.columns:
+        master[col] = (
+            master[col]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+        )
+
+        master[col] = pd.to_numeric(
+            master[col],
+            errors="coerce"
+        )
 
 print("\nScanner Rows :", len(scanner))
 print("Bearish Rows :", len(bearish))
@@ -87,18 +111,12 @@ print(master.columns.tolist())
 
 master = master[[
     "SYMBOL",
-    "%CHNG",
+    "% CHANGE",
     "OPEN",
     "HIGH",
     "LOW",
     "LTP"
 ]]
-
-master = master.rename(
-    columns={
-        "%CHNG": "% CHANGE"
-    }
-)
 
 print("\nMASTER Ready")
 print(master.head())
@@ -288,7 +306,50 @@ report.to_excel(
 
 print("\nBACKTEST Report Saved")
 print(OUTPUT_FILE)
+
+# Save latest report
 save_to_history(
     OUTPUT_FILE,
     "BACKTEST.xlsx"
 )
+
+# -----------------------------------------------------
+# Save Summary for Multi Backtest
+# -----------------------------------------------------
+# -----------------------------------------------------
+# VALIDATION
+# -----------------------------------------------------
+
+if total_signals == 0 and bear_total == 0:
+    print("\nERROR : No scanner signals found.")
+    sys.exit(1)
+
+if overall_signals == 0:
+    print("\nERROR : Overall signals are zero.")
+    sys.exit(1)
+summary = pd.DataFrame([
+    {
+        "Scanner Date": scanner_folder.name,
+        "Next Date": next_day_folder.name,
+        "Bull Signals": total_signals,
+        "Bull Hits": total_hits,
+        "Bull Accuracy": accuracy,
+        "Bear Signals": bear_total,
+        "Bear Hits": bear_hits,
+        "Bear Accuracy": bear_accuracy,
+        "Overall Signals": overall_signals,
+        "Overall Hits": overall_hits,
+        "Overall Accuracy": overall_accuracy,
+    }
+])
+
+SUMMARY_FILE = BASE / "Output" / "BACKTEST_SUMMARY.xlsx"
+
+summary.to_excel(
+    SUMMARY_FILE,
+    index=False
+)
+print(f"Summary Rows : {len(summary)}")
+
+print("\nSummary Saved")
+print(SUMMARY_FILE)

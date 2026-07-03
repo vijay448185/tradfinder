@@ -34,3 +34,33 @@ def save_to_history(file_path, file_name):
 
     print("\nHistory Updated")
     print(history_folder)
+    # ==========================================================
+# COLUMN NORMALIZATION
+# ==========================================================
+
+def normalize_columns(df):
+
+    # Remove newlines and extra spaces
+    df.columns = (
+        df.columns
+        .str.replace("\n", " ", regex=False)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+    )
+
+    rename_map = {
+        "%CHNG": "% CHANGE",
+        "% CHANGE": "% CHANGE",
+        "VOLUME (shares)": "VOLUME (shares)",
+        "VOLUME ( SHARES )": "VOLUME (shares)",
+        "VOLUME ( SHARES)": "VOLUME (shares)",
+        "VOLUME (shares )": "VOLUME (shares)",
+        "VOLUME (shares ) ": "VOLUME (shares)",
+        "VOLUME (shares)": "VOLUME (shares)",
+        "VOLUME (shares )": "VOLUME (shares)",
+        "VOLUME (shares)": "VOLUME (shares)",
+    }
+
+    df = df.rename(columns=rename_map)
+
+    return df

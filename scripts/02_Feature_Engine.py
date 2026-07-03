@@ -1,6 +1,6 @@
 from pathlib import Path
 import pandas as pd
-from utils import save_to_history
+from utils import save_to_history, normalize_columns
 
 print("=" * 60)
 print("TRADEFINDER V2 - FEATURE ENGINE")
@@ -15,6 +15,7 @@ OUTPUT_FILE = BASE / "Output" / "FEATURES.xlsx"
 print("Loading MASTER...")
 
 df = pd.read_excel(MASTER_FILE)
+df = normalize_columns(df)
 
 print("Rows :", len(df))
 print("Columns :", len(df.columns))
