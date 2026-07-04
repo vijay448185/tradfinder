@@ -32,6 +32,7 @@ required_columns = [
     "TRADED_QUA",
     "SETTLEMENT",
     "Underlying value"
+    "Delivery %"
 ]
 # Remove commas from numeric columns
 for col in ["LTP", "PREV. CLOSE", "OPEN", "HIGH", "LOW"]:
@@ -85,7 +86,22 @@ median_volume = df[volume_col].median()
 df["Volume Ratio"] = (
     df[volume_col] / median_volume
 )
+# 5. Delivery %
 
+df["Delivery %"] = (
+    pd.to_numeric(
+        df["Delivery %"],
+        errors="coerce"
+    )
+)
+
+print(
+    "\nAverage Delivery % :",
+    round(
+        df["Delivery %"].mean(),
+        2
+    )
+)
 print("Features Created Successfully")
 # ==========================================================
 # DATA QUALITY REPORT
@@ -154,7 +170,8 @@ feature_columns = [
     "Price Change %",
     "OI Change %",
     "Futures Premium %",
-    "Volume Ratio"
+    "Volume Ratio",
+    "Delivery %"
 ]
 
 features = df[feature_columns]

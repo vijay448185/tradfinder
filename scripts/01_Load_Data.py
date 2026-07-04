@@ -11,6 +11,7 @@ BASE = Path(__file__).resolve().parent.parent
 DAILY = BASE / "Input" / "Daily"
 OI = BASE / "Input" / "OI"
 MW = BASE / "Input" / "MW"
+DELIVERY = BASE / "Input" / "DELIVERY"
 OUTPUT = BASE / "Output"
 
 OUTPUT.mkdir(exist_ok=True)
@@ -20,10 +21,35 @@ print("Searching Files...")
 daily_file = list(DAILY.glob("*.csv"))[0]
 oi_file = list(OI.glob("*.csv"))[0]
 mw_file = list(MW.glob("*.csv"))[0]
+# ==========================================================
+# MATCH DELIVERY FILE WITH DAILY DATE
+# ==========================================================
 
-print("Daily :", daily_file.name)
-print("OI    :", oi_file.name)
-print("MW    :", mw_file.name)
+daily_date = daily_file.stem[2:10]
+
+delivery_files = list(
+    DELIVERY.glob("*.csv")
+)
+
+delivery_file = None
+
+for f in delivery_files:
+
+    if daily_date in f.stem:
+
+        delivery_file = f
+        break
+
+if delivery_file is None:
+
+    raise FileNotFoundError(
+        f"Delivery file not found for {daily_date}"
+    )
+
+print("Daily    :", daily_file.name)
+print("OI       :", oi_file.name)
+print("MW       :", mw_file.name)
+print("Delivery :", delivery_file.name)
 # ==========================================================
 # LOAD FILES
 # ==========================================================
@@ -36,7 +62,25 @@ oi = pd.read_csv(oi_file, low_memory=False)
 
 print("Loading MW File...")
 mw = pd.read_csv(mw_file, low_memory=False)
+print("Loading Delivery File...")
 
+delivery = pd.read_csv(
+    delivery_file,
+    skiprows=3,
+    low_memory=False
+)
+print("\nDelivery Shape :", delivery.shape)
+
+print("\nRow 200")
+print(delivery.iloc[200])
+
+print("\nRow 220")
+print(delivery.iloc[220])
+print("\nDelivery Raw Columns:")
+print(delivery.columns.tolist())
+
+print("\nDelivery Raw Data:")
+print(delivery.head(10))
 # ==========================================================
 # CLEAN COLUMN NAMES
 # ==========================================================
@@ -44,6 +88,10 @@ mw = pd.read_csv(mw_file, low_memory=False)
 daily.columns = daily.columns.str.strip()
 oi.columns = oi.columns.str.strip()
 mw.columns = mw.columns.str.strip()
+delivery.columns = delivery.columns.str.strip()
+print(delivery.columns.tolist())
+print("\nDelivery Columns")
+print(delivery.columns.tolist())
 
 print("\nDaily Columns")
 print(daily.columns.tolist())
@@ -90,6 +138,49 @@ mw["SYMBOL"] = (
     .astype(str)
     .str.upper()
     .str.strip()
+)
+# ==========================================================
+# DELIVERY CLEAN
+# ==========================================================
+
+print(
+    delivery[
+        "Name of Security"
+    ].head(20)
+)
+delivery.rename(
+    columns={
+        "Sr No": "SYMBOL",
+        "% of Deliverable Quantity to Traded Quantity": "Delivery %"
+    },
+    inplace=True
+)
+
+delivery = delivery[
+    delivery["Name of Security"] == "EQ"
+].copy()
+
+delivery["SYMBOL"] = (
+    delivery["SYMBOL"]
+    .astype(str)
+    .str.upper()
+    .str.strip()
+)
+
+delivery = delivery[
+    [
+        "SYMBOL",
+        "Delivery %"
+    ]
+]
+
+print("\nDelivery Records :", len(delivery))
+
+print("\nDelivery Sample Symbols")
+print(
+    delivery["SYMBOL"]
+    .head(10)
+    .tolist()
 )
 
 print("\nOI Records :", len(oi))
@@ -185,11 +276,25 @@ master = master.merge(
     on="SYMBOL",
     how="left"
 )
+master = master.merge(
+    delivery,
+    on="SYMBOL",
+    how="left"
+)
 
 # ==========================================================
 # SAVE
 # ==========================================================
+print("\nDelivery Merged")
 
+print(
+    master[
+        [
+            "SYMBOL",
+            "Delivery %"
+        ]
+    ].head(15)
+)
 output_file = OUTPUT / "MASTER.xlsx"
 # ==========================================================
 # AUTO HISTORY

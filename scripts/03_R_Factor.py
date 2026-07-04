@@ -184,6 +184,16 @@ df["Volume Score"] = (
     .fillna(0)
     * 20
 )
+# ==========================================================
+# DELIVERY SCORE
+# ==========================================================
+
+df["Delivery Score"] = (
+    df["Delivery %"]
+    .rank(pct=True)
+    .fillna(0)
+    * 5
+)
 
 # ==========================================================
 # BONUS SCORE
@@ -287,6 +297,7 @@ df["R Factor"] = (
     + df["OI Score"]
     + df["Premium Score"]
     + df["Volume Score"]
+#     + df["Delivery Score"]
     + df["Bonus Score"]
     + df["Conviction Score"]
     + df["Momentum Score"]
@@ -314,6 +325,7 @@ output_columns = [
     "OI Score",
     "Premium Score",
     "Volume Score",
+    "Delivery Score",
     "Bonus Score",
     "Conviction Score",
     "Momentum Score",
