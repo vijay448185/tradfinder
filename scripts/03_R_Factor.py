@@ -1,52 +1,183 @@
 from pathlib import Path
 import pandas as pd
+
 from utils import save_to_history
+
 print("=" * 60)
-print("TRADEFINDER V2 - R FACTOR")
+print("TRADEFINDER V3 - R FACTOR")
 print("=" * 60)
 
 BASE = Path(__file__).resolve().parent.parent
 
-FEATURE_FILE = BASE / "Output" / "FEATURES.xlsx"
-OUTPUT_FILE = BASE / "Output" / "R_FACTOR.xlsx"
+FEATURE_FILE = (
+    BASE /
+    "Output" /
+    "FEATURES.xlsx"
+)
+
+OUTPUT_FILE = (
+    BASE /
+    "Output" /
+    "R_FACTOR.xlsx"
+)
 
 print("Loading FEATURES...")
 
-df = pd.read_excel(FEATURE_FILE)
+df = pd.read_excel(
+    FEATURE_FILE
+)
 
-print("Rows :", len(df))
-print("Columns :", len(df.columns))
+print(
+    f"Rows : {len(df)}"
+)
+
+print(
+    f"Columns : {len(df.columns)}"
+)
+
 # ==========================================================
-# CREATE R FACTOR SCORES
+# BUILD UP
 # ==========================================================
 
-print("\nCreating R Scores...")
+df["Build Up"] = "Neutral"
 
-# Price Score (0-25)
-df["Price Score"] = (
-    df["Price Change %"]
+df.loc[
+    (df["Price Change %"] > 0) &
+    (df["OI Change %"] > 0),
+    "Build Up"
+] = "Long Build-up"
+
+df.loc[
+    (df["Price Change %"] < 0) &
+    (df["OI Change %"] > 0),
+    "Build Up"
+] = "Short Build-up"
+
+df.loc[
+    (df["Price Change %"] > 0) &
+    (df["OI Change %"] < 0),
+    "Build Up"
+] = "Short Covering"
+
+df.loc[
+    (df["Price Change %"] < 0) &
+    (df["OI Change %"] < 0),
+    "Build Up"
+] = "Long Unwinding"
+
+# ==========================================================
+# SCORE COLUMNS
+# ==========================================================
+
+df["Price Score"] = 0.0
+df["OI Score"] = 0.0
+df["Premium Score"] = 0.0
+df["Volume Score"] = 0.0
+
+df["Bonus Score"] = 0
+df["Conviction Score"] = 0
+df["Momentum Score"] = 0
+
+print("\nCalculating Dynamic Scores...")
+# ==========================================================
+# DIRECTIONAL SCORES
+# ==========================================================
+
+# -------- LONG BUILD-UP --------
+
+long_mask = (
+    df["Build Up"] == "Long Build-up"
+)
+
+df.loc[
+    long_mask,
+    "Price Score"
+] = (
+    df.loc[
+        long_mask,
+        "Price Change %"
+    ]
     .rank(pct=True)
     .fillna(0)
     * 25
 )
 
-# OI Score (0-25)
-df["OI Score"] = (
-    df["OI Change %"]
+df.loc[
+    long_mask,
+    "OI Score"
+] = (
+    df.loc[
+        long_mask,
+        "OI Change %"
+    ]
     .rank(pct=True)
     .fillna(0)
     * 25
 )
 
-# Premium Score (0-20)
-df["Premium Score"] = (
-    df["Futures Premium %"]
+df.loc[
+    long_mask,
+    "Premium Score"
+] = (
+    df.loc[
+        long_mask,
+        "Futures Premium %"
+    ]
     .rank(pct=True)
     .fillna(0)
     * 20
 )
 
-# Volume Score (0-20)
+# -------- SHORT BUILD-UP --------
+
+short_mask = (
+    df["Build Up"] == "Short Build-up"
+)
+
+# Bigger price fall = higher score
+df.loc[
+    short_mask,
+    "Price Score"
+] = (
+    (-df.loc[
+        short_mask,
+        "Price Change %"
+    ])
+    .rank(pct=True)
+    .fillna(0)
+    * 25
+)
+
+# Higher OI increase = higher score
+df.loc[
+    short_mask,
+    "OI Score"
+] = (
+    df.loc[
+        short_mask,
+        "OI Change %"
+    ]
+    .rank(pct=True)
+    .fillna(0)
+    * 25
+)
+
+# Discount / lower premium is stronger for bearish
+df.loc[
+    short_mask,
+    "Premium Score"
+] = (
+    (-df.loc[
+        short_mask,
+        "Futures Premium %"
+    ])
+    .rank(pct=True)
+    .fillna(0)
+    * 20
+)
+
+# -------- VOLUME (COMMON) --------
+
 df["Volume Score"] = (
     df["Volume Ratio"]
     .rank(pct=True)
@@ -54,99 +185,103 @@ df["Volume Score"] = (
     * 20
 )
 
-# Bonus Score
 # ==========================================================
-# CONVICTION SCORE
+# BONUS SCORE
 # ==========================================================
 
-df["Conviction Score"] = 0
-
-# Very Strong Setup
 df.loc[
+    long_mask,
+    "Bonus Score"
+] = 20
+
+df.loc[
+    short_mask,
+    "Bonus Score"
+] = 20
+
+df.loc[
+    df["Build Up"] == "Short Covering",
+    "Bonus Score"
+] = 8
+
+df.loc[
+    df["Build Up"] == "Long Unwinding",
+    "Bonus Score"
+] = 8
+# ==========================================================
+# CONVICTION
+# ==========================================================
+
+# Long Build-up
+df.loc[
+    long_mask &
     (df["Price Change %"] >= 2) &
     (df["OI Change %"] >= 15) &
     (df["Volume Ratio"] >= 2),
     "Conviction Score"
 ] = 10
 
-# Strong Setup
 df.loc[
+    long_mask &
     (df["Price Change %"] >= 1) &
     (df["OI Change %"] >= 10),
     "Conviction Score"
-] = df["Conviction Score"].clip(lower=5)
-
-# Weak Setup
-df.loc[
-    (df["Price Change %"] < 0) &
-    (df["OI Change %"] > 10),
-    "Conviction Score"
-] = -5
-# ==========================================================
-# BUILD-UP LOGIC
-# ==========================================================
-
-df["Build Up"] = "Neutral"
-
-# Long Build-up
-df.loc[
-    (df["Price Change %"] > 0) &
-    (df["OI Change %"] > 0),
-    "Build Up"
-] = "Long Build-up"
+] = 5
 
 # Short Build-up
 df.loc[
-    (df["Price Change %"] < 0) &
-    (df["OI Change %"] > 0),
-    "Build Up"
-] = "Short Build-up"
+    short_mask &
+    (df["Price Change %"] <= -2) &
+    (df["OI Change %"] >= 15) &
+    (df["Volume Ratio"] >= 2),
+    "Conviction Score"
+] = 10
 
-# Short Covering
 df.loc[
-    (df["Price Change %"] > 0) &
-    (df["OI Change %"] < 0),
-    "Build Up"
-] = "Short Covering"
+    short_mask &
+    (df["Price Change %"] <= -1) &
+    (df["OI Change %"] >= 10),
+    "Conviction Score"
+] = 5
 
-# Long Unwinding
-df.loc[
-    (df["Price Change %"] < 0) &
-    (df["OI Change %"] < 0),
-    "Build Up"
-] = "Long Unwinding"
-
-# Bonus according to Build-up
-df.loc[df["Build Up"] == "Long Build-up", "Bonus Score"] = 20
-df.loc[df["Build Up"] == "Short Covering", "Bonus Score"] = 15
-df.loc[df["Build Up"] == "Long Unwinding", "Bonus Score"] = 5
-df.loc[df["Build Up"] == "Short Build-up", "Bonus Score"] = 0
-# Final R Factor
 # ==========================================================
-# MOMENTUM SCORE
+# MOMENTUM
 # ==========================================================
 
-df["Momentum Score"] = 0
-
-# Strong Momentum
+# Bullish Momentum
 df.loc[
+    long_mask &
     (df["Price Change %"] >= 2) &
     (df["Volume Ratio"] >= 2),
     "Momentum Score"
 ] = 10
 
-# Medium Momentum
 df.loc[
+    long_mask &
     (df["Price Change %"] >= 1) &
     (df["Volume Ratio"] >= 1.5),
     "Momentum Score"
-] = df["Momentum Score"].clip(lower=5)
+] = 5
 
-# Weak Momentum
+# Bearish Momentum
 df.loc[
-    (df["Price Change %"] < 0),
+    short_mask &
+    (df["Price Change %"] <= -2) &
+    (df["Volume Ratio"] >= 2),
     "Momentum Score"
-] = -5
+] = 10
+
+df.loc[
+    short_mask &
+    (df["Price Change %"] <= -1) &
+    (df["Volume Ratio"] >= 1.5),
+    "Momentum Score"
+] = 5
+
+# ==========================================================
+# FINAL R FACTOR
+# ==========================================================
+
 df["R Factor"] = (
     df["Price Score"]
     + df["OI Score"]
@@ -157,41 +292,21 @@ df["R Factor"] = (
     + df["Momentum Score"]
 )
 
-
-print("R Factor Created")
-# ==========================================================
-# RANKING
-# ==========================================================
-print("\nMissing R Factor :", df["R Factor"].isna().sum())
-
-print(df[df["R Factor"].isna()][["SYMBOL"]])
-
-rank = df["R Factor"].rank(
-    ascending=False,
-    method="dense"
+df["Rank"] = (
+    df["R Factor"]
+    .rank(
+        ascending=False,
+        method="dense"
+    )
 )
-
-print("\nMissing Rank :", rank.isna().sum())
-
-print(
-    df.loc[
-        rank.isna(),
-        ["SYMBOL", "R Factor"]
-    ]
-)
-
-df["Rank"] = rank
 
 df = df.sort_values(
     "R Factor",
     ascending=False
 )
 
-# ==========================================================
-# SAVE
-# ==========================================================
-
 output_columns = [
+
     "Rank",
     "SYMBOL",
     "Build Up",
@@ -202,18 +317,30 @@ output_columns = [
     "Bonus Score",
     "Conviction Score",
     "Momentum Score",
-    "R Factor"
+    "R Factor",
+
 ]
 
-result = df[output_columns]
+result = df[
+    output_columns
+]
 
 result.to_excel(
     OUTPUT_FILE,
     index=False
 )
 
-print("\nTOP 20 STOCKS")
+save_to_history(
+    OUTPUT_FILE,
+    "R_FACTOR.xlsx"
+)
+
+print("\nTOP 20")
 print(result.head(20))
 
-print("\nSaved :", OUTPUT_FILE)
-save_to_history(OUTPUT_FILE, "R_FACTOR.xlsx")
+print("\nSaved :")
+print(OUTPUT_FILE)
+
+print("=" * 60)
+print("R FACTOR COMPLETED")
+print("=" * 60)

@@ -6,7 +6,7 @@ import pandas as pd
 from utils import normalize_columns
 
 print("=" * 60)
-print("TRADEFINDER V4 - RESEARCH BACKTEST")
+print("TRADEFINDER V6 - RESEARCH BACKTEST")
 print("=" * 60)
 
 BASE = Path(__file__).resolve().parent.parent
@@ -14,72 +14,86 @@ BASE = Path(__file__).resolve().parent.parent
 HISTORY = BASE / "History"
 OUTPUT = BASE / "Output"
 
+OUTPUT.mkdir(
+    exist_ok=True
+)
+
 folders = sorted(
     [
-        x
-        for x in HISTORY.iterdir()
-        if x.is_dir()
+        f
+        for f in HISTORY.iterdir()
+        if f.is_dir()
     ]
 )
 
-print(f"\nHistory Folders : {len(folders)}")
+print(
+    f"History Folders : "
+    f"{len(folders)}"
+)
 
 if len(folders) < 2:
-    print("\nNeed at least 2 folders.")
+
+    print("Need at least 2 folders.")
     sys.exit()
 
 # ==========================================================
-# BUILD VALID PAIRS
+# VALID PAIRS
 # ==========================================================
 
 pairs = []
 
-print("\n" + "=" * 60)
-print("VALID RESEARCH PAIRS")
-print("=" * 60)
-
 for i in range(len(folders) - 1):
 
-    scanner_folder = folders[i]
-    next_day_folder = folders[i + 1]
+    scanner = folders[i]
+    next_day = folders[i + 1]
 
     d1 = datetime.strptime(
-        scanner_folder.name,
+        scanner.name,
         "%Y-%m-%d"
     )
 
     d2 = datetime.strptime(
-        next_day_folder.name,
+        next_day.name,
         "%Y-%m-%d"
     )
 
-    gap = (d2 - d1).days
+    if (d2 - d1).days > 5:
+        continue
 
-    if gap > 5:
+    required = [
 
-        print(
-            f"SKIP : "
-            f"{scanner_folder.name}"
-            f" -> "
-            f"{next_day_folder.name}"
-        )
+        scanner / "BULLISH_SCANNER.xlsx",
+        scanner / "BEARISH_SCANNER.xlsx",
+        scanner / "R_FACTOR.xlsx",
+        next_day / "MASTER.xlsx",
 
+    ]
+
+    if not all(
+        x.exists()
+        for x in required
+    ):
         continue
 
     pairs.append(
         (
-            scanner_folder,
-            next_day_folder
+            scanner,
+            next_day
         )
     )
 
-print("\n" + "=" * 60)
-print(f"Valid Pairs : {len(pairs)}")
-print("=" * 60)
+print(
+    f"Valid Pairs : "
+    f"{len(pairs)}"
+)
 
-results = []
+summary_rows = []
 
-print("\nStarting Research...\n")
+captured_bull_all = []
+captured_bear_all = []
+
+missed_bull_all = []
+missed_bear_all = []
 
 # ==========================================================
 # MAIN LOOP
@@ -93,94 +107,49 @@ for n, (
     start=1
 ):
 
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print(
-        f"Processing "
         f"{n}/{len(pairs)}"
     )
 
     print(
-        f"{scanner_folder.name}"
-        f" -> "
-        f"{next_day_folder.name}"
+        scanner_folder.name,
+        "->",
+        next_day_folder.name
     )
 
     print("=" * 60)
 
-    bull_file = (
+    bullish = pd.read_excel(
         scanner_folder /
         "BULLISH_SCANNER.xlsx"
     )
 
-    bear_file = (
+    bearish = pd.read_excel(
         scanner_folder /
         "BEARISH_SCANNER.xlsx"
     )
 
-    rf_file = (
+    rf = pd.read_excel(
         scanner_folder /
         "R_FACTOR.xlsx"
     )
 
-    master_file = (
+    master = pd.read_excel(
         next_day_folder /
         "MASTER.xlsx"
-    )
-
-    required_files = [
-        bull_file,
-        bear_file,
-        rf_file,
-        master_file
-    ]
-
-    missing = [
-        f.name
-        for f in required_files
-        if not f.exists()
-    ]
-
-    if missing:
-
-        print(
-            "Missing Files :",
-            ", ".join(missing)
-        )
-
-        continue
-
-    bullish = pd.read_excel(
-        bull_file
-    )
-
-    bearish = pd.read_excel(
-        bear_file
-    )
-
-    rf = pd.read_excel(
-        rf_file
-    )
-
-    master = pd.read_excel(
-        master_file
     )
 
     master = normalize_columns(
         master
     )
         # ==========================================================
-    # CHECK REQUIRED COLUMN
+    # NEXT DAY MOVERS
     # ==========================================================
 
     if "% CHANGE" not in master.columns:
 
-        print("\nMASTER Columns :")
-
-        for col in master.columns:
-            print(col)
-
-        print("\nMissing Column : % CHANGE")
-
+        print("Missing Column : % CHANGE")
         continue
 
     master["% CHANGE"] = (
@@ -198,10 +167,6 @@ for n, (
         errors="coerce"
     )
 
-    # ==========================================================
-    # FIND NEXT DAY MOVERS
-    # ==========================================================
-
     bull_movers = master[
         master["% CHANGE"] >= 3
     ].copy()
@@ -210,24 +175,14 @@ for n, (
         master["% CHANGE"] <= -3
     ].copy()
 
-    print(
-        f"Bull Movers : {len(bull_movers)}"
-    )
-
-    print(
-        f"Bear Movers : {len(bear_movers)}"
-    )
-
     # ==========================================================
-    # CAPTURED MOVERS
+    # CAPTURED
     # ==========================================================
 
     captured_bull = bull_movers.merge(
         bullish[
             [
-                "SYMBOL",
-                "Rank",
-                "R Factor"
+                "SYMBOL"
             ]
         ],
         on="SYMBOL",
@@ -237,25 +192,32 @@ for n, (
     captured_bear = bear_movers.merge(
         bearish[
             [
-                "SYMBOL",
-                "Rank",
-                "R Factor"
+                "SYMBOL"
             ]
         ],
         on="SYMBOL",
         how="inner"
     )
 
-    print(
-        f"Captured Bull : {len(captured_bull)}"
+    # ==========================================================
+    # IMPORTANT
+    # MERGE COMPLETE R_FACTOR DATA
+    # ==========================================================
+
+    captured_bull = captured_bull.merge(
+        rf,
+        on="SYMBOL",
+        how="left"
     )
 
-    print(
-        f"Captured Bear : {len(captured_bear)}"
+    captured_bear = captured_bear.merge(
+        rf,
+        on="SYMBOL",
+        how="left"
     )
 
     # ==========================================================
-    # MISSED MOVERS
+    # MISSED
     # ==========================================================
 
     missed_bull = bull_movers[
@@ -282,50 +244,53 @@ for n, (
         how="left"
     )
 
-    print(
-        f"Missed Bull : {len(missed_bull)}"
-    )
+    # ==========================================================
+    # DATE TAG
+    # ==========================================================
 
-    print(
-        f"Missed Bear : {len(missed_bear)}"
-    )
+    for df_temp in [
 
-    bull_capture_pct = 0
+        captured_bull,
+        captured_bear,
+        missed_bull,
+        missed_bear,
+
+    ]:
+
+        df_temp.insert(
+            0,
+            "Scanner Date",
+            scanner_folder.name
+        )
+
+        df_temp.insert(
+            1,
+            "Next Date",
+            next_day_folder.name
+        )
+        bull_capture = 0
 
     if len(bull_movers):
 
-        bull_capture_pct = round(
+        bull_capture = round(
             len(captured_bull)
             * 100
             / len(bull_movers),
             2
         )
 
-    bear_capture_pct = 0
+    bear_capture = 0
 
     if len(bear_movers):
 
-        bear_capture_pct = round(
+        bear_capture = round(
             len(captured_bear)
             * 100
             / len(bear_movers),
             2
         )
-    print(
-        f"Bull Capture % : "
-        f"{bull_capture_pct}%"
-    )
 
-    print(
-        f"Bear Capture % : "
-        f"{bear_capture_pct}%"
-    )
-
-    # ==========================================================
-    # SAVE RESULT
-    # ==========================================================
-
-    results.append(
+    summary_rows.append(
         {
             "Scanner Date": scanner_folder.name,
             "Next Date": next_day_folder.name,
@@ -333,95 +298,77 @@ for n, (
             "Bull Movers": len(bull_movers),
             "Bull Captured": len(captured_bull),
             "Bull Missed": len(missed_bull),
-            "Bull Capture %": bull_capture_pct,
+            "Bull Capture %": bull_capture,
 
             "Bear Movers": len(bear_movers),
             "Bear Captured": len(captured_bear),
             "Bear Missed": len(missed_bear),
-            "Bear Capture %": bear_capture_pct,
-
-            "Average Missed Bull RF":
-                round(
-                    missed_bull["R Factor"].mean(),
-                    2
-                ) if len(missed_bull) else 0,
-
-            "Average Missed Bear RF":
-                round(
-                    missed_bear["R Factor"].mean(),
-                    2
-                ) if len(missed_bear) else 0,
+            "Bear Capture %": bear_capture,
         }
     )
 
-    print("-" * 60)
-    print("Completed")
-    print("-" * 60)
+    captured_bull_all.append(captured_bull)
+    captured_bear_all.append(captured_bear)
+
+    missed_bull_all.append(missed_bull)
+    missed_bear_all.append(missed_bear)
 
 # ==========================================================
-# CREATE REPORT
+# SAVE REPORTS
 # ==========================================================
 
-if len(results) == 0:
+summary = pd.DataFrame(summary_rows)
 
-    print("\nNo Results Generated.")
-    sys.exit()
-
-final = pd.DataFrame(
-    results
+summary.to_excel(
+    OUTPUT / "RESEARCH_SUMMARY.xlsx",
+    index=False
 )
 
-OUTPUT.mkdir(
-    exist_ok=True
+pd.concat(
+    captured_bull_all,
+    ignore_index=True
+).to_excel(
+    OUTPUT / "CAPTURED_BULLISH.xlsx",
+    index=False
 )
 
-output_file = (
-    OUTPUT /
-    "RESEARCH_SUMMARY.xlsx"
+pd.concat(
+    captured_bear_all,
+    ignore_index=True
+).to_excel(
+    OUTPUT / "CAPTURED_BEARISH.xlsx",
+    index=False
 )
 
-final.to_excel(
-    output_file,
+pd.concat(
+    missed_bull_all,
+    ignore_index=True
+).to_excel(
+    OUTPUT / "MISSED_BULLISH.xlsx",
+    index=False
+)
+
+pd.concat(
+    missed_bear_all,
+    ignore_index=True
+).to_excel(
+    OUTPUT / "MISSED_BEARISH.xlsx",
     index=False
 )
 
 print("\n" + "=" * 60)
-print("TRADEFINDER V4 - RESEARCH COMPLETED")
+print("RESEARCH COMPLETED")
 print("=" * 60)
 
 print(
-    f"History Folders : {len(folders)}"
-)
-
-print(
-    f"Valid Pairs     : {len(pairs)}"
-)
-
-print(
-    f"Pairs Tested    : {len(final)}"
-)
-
-print(
-    f"Average Bull Capture % : "
-    f"{round(final['Bull Capture %'].mean(),2)}%"
-)
-
-print(
-    f"Average Bear Capture % : "
-    f"{round(final['Bear Capture %'].mean(),2)}%"
-)
-
-print(
-    f"Average Missed Bull RF : "
-    f"{round(final['Average Missed Bull RF'].mean(),2)}"
-)
-
-print(
-    f"Average Missed Bear RF : "
-    f"{round(final['Average Missed Bear RF'].mean(),2)}"
+    f"Pairs Tested : {len(summary)}"
 )
 
 print("\nSaved :")
-print(output_file)
+print("RESEARCH_SUMMARY.xlsx")
+print("CAPTURED_BULLISH.xlsx")
+print("CAPTURED_BEARISH.xlsx")
+print("MISSED_BULLISH.xlsx")
+print("MISSED_BEARISH.xlsx")
 
 print("=" * 60)
